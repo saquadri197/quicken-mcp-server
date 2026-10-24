@@ -17,6 +17,50 @@ A containerized MCP (Model Context Protocol) server that converts a local export
 - **Security**: SQL queries are restricted to SELECT operations only
 - **Resources**: Export data as CSV files through MCP resources
 
+
+## Quicken Business & Personal / Simplifi (CSV exports)
+
+The web versions of Quicken export CSV, not QIF. Use `--csv` with either a file or a
+folder (the newest `.csv` in the folder is loaded):
+
+```bash
+python -m app.main --csv /srv/quicken-data
+```
+
+CSV mode keeps the account name, the Business/Personal tag, tags, notes and the
+"Exclusion" flag, and marks transfers between your own accounts (and card payments)
+so they don't inflate income or spending. Extra tool: `get_cash_flow` (monthly
+income vs. spending by Business/Personal tag). Extra views for `run_sql`:
+`cash_flow`, `monthly_cash_flow`, `account_summaries`.
+
+After loading, DuckDB file and network access is switched off, so `run_sql` can
+only query the loaded data.
+
+### Running on a Proxmox LXC, used from the Claude desktop app on Windows
+
+1. Create an unprivileged Debian 12 LXC (1 core, 1 GB RAM, 4 GB disk).
+2. On Windows, make a key just for this: `ssh-keygen -t ed25519 -f %USERPROFILE%\.ssh\quicken_mcp`
+3. In the LXC, as root:
+   ```bash
+   SAMBA_USER=<you> bash deploy/install.sh <this-repo-url> "<contents of quicken_mcp.pub>"
+   ```
+   (Leave out `SAMBA_USER=` if you don't want a network share for dropping exports.)
+   The key can only start this server: no shell, no port forwarding.
+4. Add to `claude_desktop_config.json`:
+   ```json
+   {
+     "mcpServers": {
+       "quicken": {
+         "command": "ssh",
+         "args": ["-i", "C:\\Users\\<you>\\.ssh\\quicken_mcp", "-o", "BatchMode=yes",
+                  "-o", "StrictHostKeyChecking=accept-new", "quicken@<lxc-ip>"]
+       }
+     }
+   }
+   ```
+5. Export transactions from Quicken (All Accounts, Export CSV), save the file into the
+   share, and restart Claude desktop (each session loads the newest export).
+
 ## TLDR: Talk to your Quicken data in ChatGPT, Claude or ollama!
 
 ![Personal Finance advisor](<img/Claude Example.png>)
