@@ -51,6 +51,28 @@ DATE_FORMATS = (
 # Categories Quicken uses for money moving between your own accounts
 TRANSFER_CATEGORIES = {"transfer", "transfers", "credit card payment", "balance adjustment"}
 
+# Categories that are real money movements but not day-to-day income or spending
+# (one-offs that would wreck a budget view). Matched case-insensitively as prefixes.
+ONE_OFF_PREFIXES = ("theft loss", "loans:loan proceeds", "loan proceeds")
+
+# Optional file in the data folder listing extra category names, one per line, that
+# are transfers between your own accounts which are not in the export (for example
+# an IRA or brokerage account Quicken tracks as an investment account).
+EXTRA_TRANSFERS_FILE = "transfer-categories.txt"
+
+
+def _extra_transfer_categories(csv_path: Path) -> set:
+    f = csv_path.parent / EXTRA_TRANSFERS_FILE
+    if not f.is_file():
+        return set()
+    names = set()
+    for line in f.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            names.add(line.lower())
+    logger.info(f"Extra transfer categories from {f.name}: {sorted(names)}")
+    return names
+
 
 def _norm(header: str) -> str:
     return re.sub(r"\s+", " ", (header or "").strip().lower())
@@ -170,9 +192,13 @@ def parse_csv(csv_path: str) -> Dict[str, List[Dict]]:
             logger.warning(f"Skipped {skipped} rows with no usable date or amount")
 
     account_names = sorted({t["account"] for t in transactions if t["account"]})
+    extra_transfers = _extra_transfer_categories(path)
     for t in transactions:
         cat = (t["category"] or "").strip()
-        t["is_transfer"] = cat.lower() in TRANSFER_CATEGORIES or cat in account_names
+        low = cat.lower()
+        t["is_transfer"] = (low in TRANSFER_CATEGORIES or low.startswith("transfer")
+                            or cat in account_names or low in extra_transfers)
+        t["one_off"] = low.startswith(ONE_OFF_PREFIXES)
 
     # Accounts: the CSV carries no balances, so balance is the net of this export
     accounts = []
@@ -241,11 +267,11 @@ def load_csv_to_duckdb(csv_path: str, db_connection) -> Dict[str, int]:
     db_connection.execute("DELETE FROM transactions")
     db_connection.executemany(
         "INSERT INTO transactions (tx_id, account_type, account, date, payee, original_payee, memo, "
-        "amount, cleared, number, category, tags, business_personal, excluded, is_transfer) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "amount, cleared, number, category, tags, business_personal, excluded, is_transfer, one_off) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [(t["tx_id"], t["account_type"], t["account"], t["date"], t["payee"], t["original_payee"],
           t["memo"], t["amount"], t["cleared"], t["number"], t["category"], t["tags"],
-          t["business_personal"], t["excluded"], t["is_transfer"]) for t in data["transactions"]],
+          t["business_personal"], t["excluded"], t["is_transfer"], t["one_off"]) for t in data["transactions"]],
     )
 
     return {

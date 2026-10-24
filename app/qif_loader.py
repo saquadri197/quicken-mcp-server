@@ -366,7 +366,8 @@ def _create_tables(db_connection):
             tags VARCHAR,
             business_personal VARCHAR,
             excluded BOOLEAN DEFAULT FALSE,
-            is_transfer BOOLEAN DEFAULT FALSE
+            is_transfer BOOLEAN DEFAULT FALSE,
+            one_off BOOLEAN DEFAULT FALSE
         )
     """)
 
@@ -445,11 +446,13 @@ def _create_tables(db_connection):
     # Real income/spending: drops transfers between your own accounts. Quicken's
     # "Exclusion" flag means "leave out of spending reports" and is set on all
     # income too, so it only removes money going out, never money coming in.
+    # one_off rows (theft loss, loan proceeds) are real but not budget items.
     db_connection.execute("""
         CREATE OR REPLACE VIEW cash_flow AS
         SELECT *
         FROM transactions
         WHERE NOT COALESCE(is_transfer, FALSE)
+          AND NOT COALESCE(one_off, FALSE)
           AND NOT (COALESCE(excluded, FALSE) AND amount < 0)
     """)
 

@@ -33,6 +33,12 @@ so they don't inflate income or spending. Extra tool: `get_cash_flow` (monthly
 income vs. spending by Business/Personal tag). Extra views for `run_sql`:
 `cash_flow`, `monthly_cash_flow`, `account_summaries`.
 
+Categories starting with "Theft Loss" or ending in "Loan Proceeds" are treated as
+one-offs (column `one_off`) and left out of cash flow. Categories starting with
+"Transfer" count as transfers. Transfers to accounts that aren't in the export (an IRA
+or brokerage account Quicken tracks as an investment) can be listed, one category name
+per line, in `transfer-categories.txt` in the data folder.
+
 After loading, DuckDB file and network access is switched off, so `run_sql` can
 only query the loaded data.
 

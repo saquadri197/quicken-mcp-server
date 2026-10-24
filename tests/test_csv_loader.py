@@ -130,3 +130,26 @@ def test_reloader_picks_up_newer_export_and_survives_bad_file(tmp_path):
     assert rl.status()["transactions"] == 9          # previous data kept
     assert "failed" in rl.status()["last_error"]
     assert rl.maybe_reload() is False                # not retried until it changes
+
+
+def test_one_offs_and_extra_transfers_left_out_of_cash_flow(tmp_path):
+    rows = SAMPLE + (
+        '"Oct 02, 2026",Wire to Coinbase,Theft Loss - 2026 Crypto Fraud,-5000,360 Checking,Personal,yes,,\n'
+        '"Oct 03, 2026",Coinbase,Theft Loss - 2026 Crypto Fraud,1000,360 Checking,Personal,yes,,\n'
+        '"Oct 04, 2026",Lightstream Loan Funds,Loans:Loan Proceeds,50000,360 Checking,Personal,no,,\n'
+        '"Oct 05, 2026",Fidelity,Rollover IRA,102000,360 Checking,Personal,yes,,\n'
+        '"Oct 06, 2026",Paypal,Transfer - PayPal Balance,-2000,360 Checking,Personal,yes,,\n'
+        '"Oct 07, 2026",Lightstream,Loans:Loan Payment,-987.68,360 Checking,Personal,no,,\n'
+    )
+    (tmp_path / "x.csv").write_text(rows)
+    (tmp_path / "transfer-categories.txt").write_text("# accounts not in the export\nRollover IRA\n")
+    conn = duckdb.connect(":memory:")
+    load_csv_to_duckdb(str(tmp_path / "x.csv"), conn)
+    oct_ = [r for r in QuickenMCPTools(conn).get_cash_flow(date_from="2026-10-01")["rows"]
+            if r["business_personal"] == "Personal"][0]
+    # only the paycheck counts as income; IRA, loan proceeds and theft-loss recovery do not
+    assert oct_["income"] == pytest.approx(3492.21)
+    # spending: Quicken charge + loan payment; theft loss and PayPal transfer excluded
+    assert oct_["spending"] == pytest.approx(59.87 + 987.68)
+    net_loss = conn.execute("SELECT SUM(amount) FROM transactions WHERE category ILIKE 'theft loss%'").fetchone()[0]
+    assert float(net_loss) == pytest.approx(-4000)

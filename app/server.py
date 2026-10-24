@@ -97,7 +97,7 @@ class QuickenMCPServer:
                                  "monthly_cash_flow, monthly_summaries, category_summaries, account_summaries. "
                                  "transactions columns: tx_id, date, account, account_type, payee, original_payee, "
                                  "category, amount (negative = money out), memo, tags, business_personal, excluded, "
-                                 "is_transfer, cleared, number"),
+                                 "is_transfer, one_off (theft loss / loan proceeds), cleared, number"),
                     inputSchema={
                         "type": "object",
                         "properties": {
