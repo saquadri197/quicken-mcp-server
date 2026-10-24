@@ -11,13 +11,13 @@ from app.mcp_tools import QuickenMCPTools
 
 SAMPLE = '''Date,Payee,Category,Amount,Account,Business/Personal,Exclusion,Tags,Notes
 "Oct 21, 2026",Quicken,Software,-59.87,Platinum Card,Personal,,,
-"Oct 15, 2026",Gainwell,Personal Income:Paycheck,"3,492.21",360 Checking,Personal,,,
+"Oct 15, 2026",Gainwell,Personal Income:Paycheck,"3,492.21",360 Checking,Personal,yes,,
 "Oct 14, 2026",Adobe,Software,-21.19,Blue Business Cash(TM),HM Syed Enterprise LLC,,,
 "Oct 10, 2026",American Express,Credit Card Payment,-500.00,360 Checking,Personal,,,
 "Oct 10, 2026",American Express,Credit Card Payment,500.00,Platinum Card,Personal,,,
 "Oct 05, 2026",To Savings,360 Savings,-1000.00,360 Checking,Personal,,,
 "Oct 05, 2026",From Checking,360 Checking,1000.00,360 Savings,Personal,,,
-"Sep 28, 2026",Coinbase,Uncategorized,-102000,360 Checking,Personal,Excluded,,
+"Sep 28, 2026",Coinbase,Uncategorized,-102000,360 Checking,Personal,yes,,
 "not a date",Junk,Misc,-1,360 Checking,Personal,,,
 '''
 
@@ -58,7 +58,7 @@ def test_transfers_and_exclusions_flagged(db):
     excluded = db.execute("SELECT COUNT(*) FROM transactions WHERE excluded").fetchone()[0]
     # 2 card-payment legs + 2 account-to-account legs
     assert transfers == 4
-    assert excluded == 1
+    assert excluded == 2
 
 
 def test_cash_flow_by_tag(db):
@@ -75,6 +75,7 @@ def test_list_transactions_filters(db):
     tools = QuickenMCPTools(db)
     assert tools.list_transactions(account="blue business")["count"] == 1
     assert tools.list_transactions(business_personal="hm syed")["count"] == 1
+    # excluded paycheck still listed, excluded spending (Coinbase) dropped
     assert tools.list_transactions(include_transfers=False)["count"] == 3
 
 

@@ -61,7 +61,7 @@ class QuickenMCPServer:
                             },
                             "include_transfers": {
                                 "type": "boolean",
-                                "description": "Include transfers between your own accounts and excluded rows (default: true)",
+                                "description": "Include transfers between your own accounts and spending marked excluded (default: true)",
                                 "default": True
                             },
                             "date_from": {
@@ -136,7 +136,7 @@ class QuickenMCPServer:
                 types.Tool(
                     name="get_cash_flow",
                     description=("Monthly income vs. spending, split by the Business/Personal tag, leaving out "
-                                 "transfers between your own accounts, card payments and excluded rows"),
+                                 "transfers between your own accounts, card payments and spending marked excluded (income is always counted)"),
                     inputSchema={
                         "type": "object",
                         "properties": {

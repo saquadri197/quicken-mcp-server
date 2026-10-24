@@ -78,7 +78,7 @@ class QuickenMCPTools:
                 params.append(f"%{business_personal}%")
 
             if not include_transfers:
-                where_conditions.append("NOT COALESCE(is_transfer, FALSE) AND NOT COALESCE(excluded, FALSE)")
+                where_conditions.append("NOT COALESCE(is_transfer, FALSE) AND NOT (COALESCE(excluded, FALSE) AND amount < 0)")
 
             if date_from:
                 where_conditions.append("date >= ?")
@@ -428,7 +428,7 @@ class QuickenMCPTools:
             data = [{c: (float(v) if isinstance(v, Decimal) else v) for c, v in zip(cols, r)} for r in rows]
             return {
                 'success': True,
-                'note': 'Transfers between your own accounts, credit card payments and rows marked excluded are left out.',
+                'note': 'Transfers between your own accounts and card payments are left out, as is spending marked excluded in Quicken. Income is always counted.',
                 'rows': data,
                 'count': len(data)
             }
