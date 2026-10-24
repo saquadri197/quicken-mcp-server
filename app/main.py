@@ -10,7 +10,7 @@ import duckdb
 
 from .config import parse_args
 from .qif_loader import load_qif_to_duckdb
-from .csv_loader import load_csv_to_duckdb, resolve_csv_path
+from .csv_loader import CsvReloader, load_csv_to_duckdb, resolve_csv_path
 from .server import QuickenMCPServer
 
 
@@ -115,7 +115,11 @@ async def main():
         db_conn.execute("SET lock_configuration = true")
 
         # Create and start MCP server
-        mcp_server = QuickenMCPServer(db_conn)
+        reloader = None
+        if config.csv_path:
+            reloader = CsvReloader(config.csv_path, db_conn)
+            reloader.mark_loaded()
+        mcp_server = QuickenMCPServer(db_conn, reloader)
 
         if config.server_mode == "stdio":
             logger.info("Starting MCP server in stdio mode")

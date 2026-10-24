@@ -103,3 +103,30 @@ def test_missing_required_column(tmp_path):
     bad.write_text("Payee,Category\nx,y\n")
     with pytest.raises(ValueError, match="missing required"):
         load_csv_to_duckdb(str(bad), duckdb.connect(":memory:"))
+
+
+def test_reloader_picks_up_newer_export_and_survives_bad_file(tmp_path):
+    from app.csv_loader import CsvReloader
+    (tmp_path / "a.csv").write_text(SAMPLE)
+    conn = duckdb.connect(":memory:")
+    load_csv_to_duckdb(str(tmp_path), conn)
+    conn.execute("SET enable_external_access = false")  # reload must work with lockdown on
+    rl = CsvReloader(str(tmp_path), conn)
+    rl.mark_loaded()
+    assert rl.maybe_reload() is False
+
+    newer = tmp_path / "b.csv"
+    newer.write_text(SAMPLE + '"Nov 02, 2026",Rent,Rent,-3000,360 Checking,Personal,,,\n')
+    t = time.time() + 60
+    os.utime(newer, (t, t))
+    assert rl.maybe_reload() is True
+    assert rl.status()["file"] == "b.csv"
+    assert rl.status()["last_date"] == "2026-11-02"
+
+    bad = tmp_path / "c.csv"
+    bad.write_text("Payee\nx\n")
+    os.utime(bad, (t + 60, t + 60))
+    assert rl.maybe_reload() is False
+    assert rl.status()["transactions"] == 9          # previous data kept
+    assert "failed" in rl.status()["last_error"]
+    assert rl.maybe_reload() is False                # not retried until it changes

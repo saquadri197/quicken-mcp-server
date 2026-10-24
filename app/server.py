@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 class QuickenMCPServer:
     """MCP server for exposing Quicken financial data."""
 
-    def __init__(self, db_connection):
+    def __init__(self, db_connection, reloader=None):
         self.server = Server("quicken-mcp-server")
         self.tools = QuickenMCPTools(db_connection)
+        self.reloader = reloader
         self._setup_tools()
 
     def _setup_tools(self):
@@ -149,6 +150,12 @@ class QuickenMCPServer:
                     }
                 ),
                 types.Tool(
+                    name="get_data_status",
+                    description=("Which export file is loaded, when it was loaded, and the date range it covers. "
+                                 "A newer CSV dropped in the data folder is picked up automatically."),
+                    inputSchema={"type": "object", "properties": {}, "required": []}
+                ),
+                types.Tool(
                     name="search_transactions",
                     description="Search transactions by text in payee, original statement name, notes, tags, or category",
                     inputSchema={
@@ -173,7 +180,14 @@ class QuickenMCPServer:
         async def call_tool(name: str, arguments: Dict[str, Any]) -> Sequence[types.TextContent]:
             """Handle tool calls."""
             try:
-                if name == "list_accounts":
+                if self.reloader:
+                    self.reloader.maybe_reload()
+                if name == "get_data_status":
+                    if self.reloader:
+                        result = {"success": True, **self.reloader.status()}
+                    else:
+                        result = {"success": True, "note": "QIF mode: data is loaded once at startup"}
+                elif name == "list_accounts":
                     result = self.tools.list_accounts()
                 elif name == "list_transactions":
                     result = self.tools.list_transactions(

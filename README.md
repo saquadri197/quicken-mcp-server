@@ -58,8 +58,10 @@ only query the loaded data.
      }
    }
    ```
-5. Export transactions from Quicken (All Accounts, Export CSV), save the file into the
-   share, and restart Claude desktop (each session loads the newest export).
+5. Export transactions from Quicken (All Accounts, Export CSV) and save the file into the
+   share. A newer export is picked up automatically on the next query, with no restart;
+   `get_data_status` shows which file is loaded. A file that fails to load is skipped and
+   the previous data stays in place.
 
 ## TLDR: Talk to your Quicken data in ChatGPT, Claude or ollama!
 

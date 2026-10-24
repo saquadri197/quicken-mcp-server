@@ -253,3 +253,73 @@ def load_csv_to_duckdb(csv_path: str, db_connection) -> Dict[str, int]:
         "categories": len(data["categories"]),
         "transactions": len(data["transactions"]),
     }
+
+
+class CsvReloader:
+    """Reloads the database when a newer export lands in the data folder.
+
+    Called before each tool call. Cheap when nothing changed (one directory
+    listing). A failed reload keeps the previously loaded data.
+    """
+
+    def __init__(self, csv_path: str, db_connection):
+        self.csv_path = csv_path
+        self.db = db_connection
+        self.loaded = None      # (path, mtime, size) currently in the database
+        self.loaded_at = None
+        self.last_error = None
+        self.failed = None      # last file that failed to load; not retried until it changes
+
+    def _current(self):
+        p = resolve_csv_path(self.csv_path)
+        st = p.stat()
+        return (str(p), st.st_mtime, st.st_size)
+
+    def mark_loaded(self):
+        self.loaded = self._current()
+        self.loaded_at = datetime.now().isoformat(timespec="seconds")
+
+    def maybe_reload(self) -> bool:
+        try:
+            current = self._current()
+        except Exception as e:  # folder emptied, share unmounted, etc.
+            self.last_error = str(e)
+            return False
+        if current == self.loaded or current == self.failed:
+            return False
+        # Skip a file that is still being written (size changing)
+        import time
+        time.sleep(0.5)
+        try:
+            if self._current() != current:
+                return False
+            self.db.execute("BEGIN TRANSACTION")
+            stats = load_csv_to_duckdb(current[0], self.db)
+            self.db.execute("COMMIT")
+        except Exception as e:
+            try:
+                self.db.execute("ROLLBACK")
+            except Exception:
+                pass
+            self.failed = current
+            self.last_error = f"Reload of {Path(current[0]).name} failed, keeping previous data: {e}"
+            logger.error(self.last_error)
+            return False
+        self.loaded = current
+        self.loaded_at = datetime.now().isoformat(timespec="seconds")
+        self.last_error = None
+        logger.info(f"Reloaded {Path(current[0]).name}: {stats}")
+        return True
+
+    def status(self) -> Dict:
+        row = self.db.execute(
+            "SELECT COUNT(*), MIN(date), MAX(date) FROM transactions").fetchone()
+        return {
+            "file": Path(self.loaded[0]).name if self.loaded else None,
+            "file_modified": datetime.fromtimestamp(self.loaded[1]).isoformat(timespec="seconds") if self.loaded else None,
+            "loaded_at": self.loaded_at,
+            "transactions": row[0],
+            "first_date": str(row[1]) if row[1] else None,
+            "last_date": str(row[2]) if row[2] else None,
+            "last_error": self.last_error,
+        }
