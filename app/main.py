@@ -10,6 +10,7 @@ import duckdb
 
 from .config import parse_args
 from .qif_loader import load_qif_to_duckdb
+from .csv_loader import load_csv_to_duckdb, resolve_csv_path
 from .server import QuickenMCPServer
 
 
@@ -25,7 +26,7 @@ def setup_logging(log_level: str):
 
 
 def validate_qif_file(qif_path: str) -> bool:
-    """Validate QIF file exists and is reasonable size."""
+    """Validate the data file exists and is a reasonable size."""
     path = Path(qif_path)
 
     if not path.exists():
@@ -78,26 +79,40 @@ async def main():
         logger = logging.getLogger(__name__)
 
         logger.info("Starting QIF-to-MCP server")
-        logger.info(f"QIF file: {config.qif_path}")
+        source = config.csv_path or config.qif_path
+        logger.info(f"Data source: {source}")
         logger.info(f"Server mode: {config.server_mode}")
         logger.info(f"Memory limit: {config.memory_limit}")
 
-        # Validate QIF file
-        if not validate_qif_file(config.qif_path):
+        # Validate the data file
+        try:
+            data_file = str(resolve_csv_path(config.csv_path)) if config.csv_path else config.qif_path
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            sys.exit(1)
+        if not validate_qif_file(data_file):
             sys.exit(1)
 
         # Setup DuckDB
         db_conn = setup_duckdb(config.memory_limit)
 
         # Load QIF data
-        logger.info("Loading QIF data into database...")
+        logger.info("Loading data into database...")
         try:
-            load_stats = load_qif_to_duckdb(config.qif_path, db_conn)
+            if config.csv_path:
+                load_stats = load_csv_to_duckdb(data_file, db_conn)
+            else:
+                load_stats = load_qif_to_duckdb(data_file, db_conn)
             logger.info(f"Successfully loaded: {load_stats['accounts']} accounts, "
                        f"{load_stats['categories']} categories, {load_stats['transactions']} transactions")
         except Exception as e:
-            logger.error(f"Failed to load QIF data: {e}")
+            logger.error(f"Failed to load data: {e}")
             sys.exit(1)
+
+        # Once loaded, cut DuckDB off from the filesystem and network so queries
+        # (run_sql) cannot read other files on the host, e.g. via read_csv().
+        db_conn.execute("SET enable_external_access = false")
+        db_conn.execute("SET lock_configuration = true")
 
         # Create and start MCP server
         mcp_server = QuickenMCPServer(db_conn)

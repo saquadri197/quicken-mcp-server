@@ -343,7 +343,8 @@ def _create_tables(db_connection):
             expense_category BOOLEAN DEFAULT FALSE,
             income_category BOOLEAN DEFAULT FALSE,
             tax_related BOOLEAN DEFAULT FALSE,
-            tax_schedule VARCHAR
+            tax_schedule VARCHAR,
+            parent_category VARCHAR
         )
     """)
 
@@ -358,7 +359,14 @@ def _create_tables(db_connection):
             amount DECIMAL(15,2),
             cleared VARCHAR,
             number VARCHAR,
-            category VARCHAR
+            category VARCHAR,
+            -- Columns below are filled by the CSV loader (Quicken web exports); NULL for QIF
+            account VARCHAR,
+            original_payee VARCHAR,
+            tags VARCHAR,
+            business_personal VARCHAR,
+            excluded BOOLEAN DEFAULT FALSE,
+            is_transfer BOOLEAN DEFAULT FALSE
         )
     """)
 
@@ -432,6 +440,44 @@ def _create_tables(db_connection):
         WHERE account_type IS NOT NULL
         GROUP BY account_type
         ORDER BY total_amount DESC
+    """)
+
+    # Real income/spending: drops transfers between your own accounts and rows
+    # marked "excluded" in Quicken, which otherwise inflate both sides.
+    db_connection.execute("""
+        CREATE OR REPLACE VIEW cash_flow AS
+        SELECT *
+        FROM transactions
+        WHERE NOT COALESCE(is_transfer, FALSE)
+          AND NOT COALESCE(excluded, FALSE)
+    """)
+
+    db_connection.execute("""
+        CREATE OR REPLACE VIEW monthly_cash_flow AS
+        SELECT
+            strftime('%Y-%m', date) AS month,
+            COALESCE(business_personal, 'Untagged') AS business_personal,
+            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
+            -SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) AS spending,
+            SUM(amount) AS net,
+            COUNT(*) AS transaction_count
+        FROM cash_flow
+        WHERE date IS NOT NULL
+        GROUP BY 1, 2
+        ORDER BY month DESC, business_personal
+    """)
+
+    db_connection.execute("""
+        CREATE OR REPLACE VIEW account_summaries AS
+        SELECT
+            COALESCE(account, account_type) AS account,
+            COUNT(*) AS transaction_count,
+            SUM(amount) AS total_amount,
+            MIN(date) AS first_transaction,
+            MAX(date) AS last_transaction
+        FROM transactions
+        GROUP BY 1
+        ORDER BY 1
     """)
 
 

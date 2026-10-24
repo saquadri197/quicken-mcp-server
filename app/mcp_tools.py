@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 import logging
 from datetime import datetime, timedelta
 import re
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,9 @@ class QuickenMCPTools:
 
     def list_transactions(self,
                          account_type: Optional[str] = None,
+                         account: Optional[str] = None,
+                         business_personal: Optional[str] = None,
+                         include_transfers: bool = True,
                          date_from: Optional[str] = None,
                          date_to: Optional[str] = None,
                          category: Optional[str] = None,
@@ -65,6 +69,17 @@ class QuickenMCPTools:
                 where_conditions.append("account_type = ?")
                 params.append(account_type)
 
+            if account:
+                where_conditions.append("account ILIKE ?")
+                params.append(f"%{account}%")
+
+            if business_personal:
+                where_conditions.append("business_personal ILIKE ?")
+                params.append(f"%{business_personal}%")
+
+            if not include_transfers:
+                where_conditions.append("NOT COALESCE(is_transfer, FALSE) AND NOT COALESCE(excluded, FALSE)")
+
             if date_from:
                 where_conditions.append("date >= ?")
                 params.append(date_from)
@@ -74,11 +89,11 @@ class QuickenMCPTools:
                 params.append(date_to)
 
             if category:
-                where_conditions.append("category LIKE ?")
+                where_conditions.append("category ILIKE ?")
                 params.append(f"%{category}%")
 
             if payee:
-                where_conditions.append("payee LIKE ?")
+                where_conditions.append("payee ILIKE ?")
                 params.append(f"%{payee}%")
 
             where_clause = ""
@@ -86,7 +101,8 @@ class QuickenMCPTools:
                 where_clause = "WHERE " + " AND ".join(where_conditions)
 
             query = f"""
-                SELECT tx_id, account_type, date, payee, memo, amount, cleared, number, category
+                SELECT tx_id, account_type, date, payee, memo, amount, cleared, number, category,
+                       account, business_personal, tags, is_transfer, excluded
                 FROM transactions
                 {where_clause}
                 ORDER BY date DESC, tx_id DESC
@@ -107,7 +123,12 @@ class QuickenMCPTools:
                     'amount': float(row[5]) if row[5] is not None else None,
                     'cleared': row[6],
                     'number': row[7],
-                    'category': row[8]
+                    'category': row[8],
+                    'account': row[9],
+                    'business_personal': row[10],
+                    'tags': row[11],
+                    'is_transfer': row[12],
+                    'excluded': row[13]
                 })
 
             return {
@@ -116,6 +137,9 @@ class QuickenMCPTools:
                 'count': len(transactions),
                 'filters': {
                     'account_type': account_type,
+                    'account': account,
+                    'business_personal': business_personal,
+                    'include_transfers': include_transfers,
                     'date_from': date_from,
                     'date_to': date_to,
                     'category': category,
@@ -135,25 +159,28 @@ class QuickenMCPTools:
         """Execute a SQL query with safety restrictions."""
         try:
             # Sanitize the query - only allow SELECT statements
-            query = query.strip()
-            if not query.upper().startswith('SELECT'):
+            query = query.strip().rstrip(';')
+            query_upper = query.upper()
+            if not re.match(r'^(SELECT|WITH)\b', query_upper):
                 return {
                     'success': False,
-                    'error': 'Only SELECT queries are allowed for security reasons'
+                    'error': 'Only SELECT (or WITH ... SELECT) queries are allowed for security reasons'
                 }
+            if ';' in query:
+                return {'success': False, 'error': 'Only one statement per query is allowed'}
 
-            # Check for dangerous keywords
-            dangerous_keywords = ['DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE', 'TRUNCATE']
-            query_upper = query.upper()
+            # Check for dangerous keywords (whole words, so columns like "created_at" still work)
+            dangerous_keywords = ['DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE', 'TRUNCATE',
+                                  'COPY', 'ATTACH', 'DETACH', 'INSTALL', 'LOAD', 'PRAGMA', 'SET', 'EXPORT', 'IMPORT']
             for keyword in dangerous_keywords:
-                if keyword in query_upper:
+                if re.search(rf'\b{keyword}\b', query_upper):
                     return {
                         'success': False,
                         'error': f'Query contains prohibited keyword: {keyword}'
                     }
 
             # Execute the query with a reasonable limit
-            if 'LIMIT' not in query_upper:
+            if not re.search(r'\bLIMIT\b', query_upper):
                 query += ' LIMIT 1000'
 
             result = self.db.execute(query).fetchall()
@@ -164,8 +191,8 @@ class QuickenMCPTools:
             for row in result:
                 row_dict = {}
                 for i, value in enumerate(row):
-                    # Convert decimal/numeric types to float for JSON serialization
-                    if hasattr(value, '__float__'):
+                    # Convert decimals to float for JSON serialization (keep ints and bools as-is)
+                    if isinstance(value, Decimal):
                         row_dict[column_names[i]] = float(value)
                     elif value is None:
                         row_dict[column_names[i]] = None
@@ -239,20 +266,21 @@ class QuickenMCPTools:
             if period in ['account', 'all']:
                 # Account type summaries
                 result = self.db.execute("""
-                    SELECT account_type, transaction_count, total_amount, avg_amount
-                    FROM account_type_summaries
+                    SELECT account, transaction_count, total_amount, first_transaction, last_transaction
+                    FROM account_summaries
                 """).fetchall()
 
                 account_data = []
                 for row in result:
                     account_data.append({
-                        'account_type': row[0],
+                        'account': row[0],
                         'transaction_count': row[1],
-                        'total_amount': float(row[2]) if row[2] is not None else None,
-                        'avg_amount': float(row[3]) if row[3] is not None else None
+                        'net_amount': float(row[2]) if row[2] is not None else None,
+                        'first_transaction': row[3],
+                        'last_transaction': row[4]
                     })
 
-                summaries['account_types'] = account_data
+                summaries['accounts'] = account_data
 
             # Overall statistics
             stats_result = self.db.execute("""
@@ -329,15 +357,15 @@ class QuickenMCPTools:
         """Search transactions by payee, memo, or category."""
         try:
             query = """
-                SELECT tx_id, account_type, date, payee, memo, amount, category
+                SELECT tx_id, account_type, date, payee, memo, amount, category, account, business_personal
                 FROM transactions
-                WHERE payee LIKE ? OR memo LIKE ? OR category LIKE ?
+                WHERE payee ILIKE ? OR memo ILIKE ? OR category ILIKE ? OR original_payee ILIKE ? OR tags ILIKE ?
                 ORDER BY date DESC
                 LIMIT ?
             """
 
             search_pattern = f"%{search_term}%"
-            result = self.db.execute(query, [search_pattern, search_pattern, search_pattern, limit]).fetchall()
+            result = self.db.execute(query, [search_pattern] * 5 + [limit]).fetchall()
 
             transactions = []
             for row in result:
@@ -348,7 +376,9 @@ class QuickenMCPTools:
                     'payee': row[3],
                     'memo': row[4],
                     'amount': float(row[5]) if row[5] is not None else None,
-                    'category': row[6]
+                    'category': row[6],
+                    'account': row[7],
+                    'business_personal': row[8]
                 })
 
             return {
@@ -364,3 +394,44 @@ class QuickenMCPTools:
                 'success': False,
                 'error': str(e)
             }
+
+    def get_cash_flow(self,
+                      date_from: Optional[str] = None,
+                      date_to: Optional[str] = None,
+                      business_personal: Optional[str] = None,
+                      by_category: bool = False) -> Dict[str, Any]:
+        """Monthly income vs. spending, excluding transfers and excluded rows."""
+        try:
+            where, params = [], []
+            if date_from:
+                where.append("date >= ?"); params.append(date_from)
+            if date_to:
+                where.append("date <= ?"); params.append(date_to)
+            if business_personal:
+                where.append("business_personal ILIKE ?"); params.append(f"%{business_personal}%")
+            where_clause = ("WHERE " + " AND ".join(where)) if where else ""
+            group = "category," if by_category else ""
+            rows = self.db.execute(f"""
+                SELECT strftime('%Y-%m', date) AS month, {group}
+                       COALESCE(business_personal, 'Untagged') AS business_personal,
+                       SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
+                       -SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) AS spending,
+                       SUM(amount) AS net,
+                       COUNT(*) AS transaction_count
+                FROM cash_flow
+                {where_clause}
+                GROUP BY ALL
+                ORDER BY month DESC, business_personal{", spending DESC" if by_category else ""}
+                LIMIT 2000
+            """, params).fetchall()
+            cols = [d[0] for d in self.db.description]
+            data = [{c: (float(v) if isinstance(v, Decimal) else v) for c, v in zip(cols, r)} for r in rows]
+            return {
+                'success': True,
+                'note': 'Transfers between your own accounts, credit card payments and rows marked excluded are left out.',
+                'rows': data,
+                'count': len(data)
+            }
+        except Exception as e:
+            logger.error(f"Error computing cash flow: {e}")
+            return {'success': False, 'error': str(e)}

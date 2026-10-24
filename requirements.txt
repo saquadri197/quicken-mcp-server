@@ -1,5 +1,5 @@
 # Core dependencies
-mcp>=0.5.0
+mcp>=1.2,<2  # 2.x removed the lowlevel Server decorators this server uses
 duckdb>=0.9.0
 starlette>=0.27.0
 uvicorn[standard]>=0.23.0

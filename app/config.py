@@ -9,12 +9,13 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     """Configuration settings for the application."""
-    qif_path: str
+    qif_path: Optional[str] = None
+    csv_path: Optional[str] = None
     server_mode: str = "stdio"  # "stdio" or "sse"
     listen_host: str = "127.0.0.1"
     listen_port: int = 8700
     log_level: str = "INFO"
-    memory_limit: str = "8GB"
+    memory_limit: str = "1GB"
 
 
 def parse_args() -> Config:
@@ -23,10 +24,15 @@ def parse_args() -> Config:
         description="QIF to MCP Server - Convert Quicken files to MCP-accessible database"
     )
 
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "--qif",
-        required=True,
-        help="Path to the QIF file to load"
+        help="Path to a QIF file (Quicken Classic desktop export)"
+    )
+    source.add_argument(
+        "--csv",
+        help="Path to a CSV export from Quicken Business & Personal / Simplifi, "
+             "or a folder (the newest .csv in it is used)"
     )
 
     parser.add_argument(
@@ -51,7 +57,7 @@ def parse_args() -> Config:
 
     parser.add_argument(
         "--memory-limit",
-        default="8GB",
+        default="1GB",
         help="DuckDB memory limit (default: 8GB)"
     )
 
@@ -67,12 +73,16 @@ def parse_args() -> Config:
 
     # Check for environment variable overrides
     qif_path = os.getenv("QIF_PATH", args.qif)
+    csv_path = os.getenv("CSV_PATH", args.csv)
+    if not qif_path and not csv_path:
+        parser.error("one of --qif or --csv (or QIF_PATH / CSV_PATH) is required")
     server_mode = os.getenv("SERVER_MODE", args.server_mode)
     log_level = os.getenv("LOG_LEVEL", args.log_level)
     memory_limit = os.getenv("MEMORY_LIMIT", args.memory_limit)
 
     return Config(
         qif_path=qif_path,
+        csv_path=csv_path,
         server_mode=server_mode,
         listen_host=host,
         listen_port=port,

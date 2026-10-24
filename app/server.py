@@ -43,13 +43,26 @@ class QuickenMCPServer:
                 ),
                 types.Tool(
                     name="list_transactions",
-                    description="List transactions with optional filters by account type, date range, category, or payee",
+                    description="List transactions with optional filters by account, account type, Business/Personal tag, date range, category, or payee",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "account_type": {
                                 "type": "string",
                                 "description": "Filter by account type (e.g., 'Bank', 'CCard', 'Port')"
+                            },
+                            "account": {
+                                "type": "string",
+                                "description": "Filter by account name (partial match, CSV exports only)"
+                            },
+                            "business_personal": {
+                                "type": "string",
+                                "description": "Filter by the Business/Personal tag, e.g. 'Personal' or the business name (partial match)"
+                            },
+                            "include_transfers": {
+                                "type": "boolean",
+                                "description": "Include transfers between your own accounts and excluded rows (default: true)",
+                                "default": True
                             },
                             "date_from": {
                                 "type": "string",
@@ -78,7 +91,12 @@ class QuickenMCPServer:
                 ),
                 types.Tool(
                     name="run_sql",
-                    description="Execute a SQL query against the financial database (SELECT only for security)",
+                    description=("Execute a read-only SQL query (SELECT or WITH). Tables: transactions, accounts, "
+                                 "categories, transaction_splits. Views: cash_flow (no transfers/excluded rows), "
+                                 "monthly_cash_flow, monthly_summaries, category_summaries, account_summaries. "
+                                 "transactions columns: tx_id, date, account, account_type, payee, original_payee, "
+                                 "category, amount (negative = money out), memo, tags, business_personal, excluded, "
+                                 "is_transfer, cleared, number"),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -116,8 +134,23 @@ class QuickenMCPServer:
                     }
                 ),
                 types.Tool(
+                    name="get_cash_flow",
+                    description=("Monthly income vs. spending, split by the Business/Personal tag, leaving out "
+                                 "transfers between your own accounts, card payments and excluded rows"),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "date_from": {"type": "string", "description": "Start date YYYY-MM-DD"},
+                            "date_to": {"type": "string", "description": "End date YYYY-MM-DD"},
+                            "business_personal": {"type": "string", "description": "Only this tag (partial match)"},
+                            "by_category": {"type": "boolean", "description": "Break each month down by category", "default": False}
+                        },
+                        "required": []
+                    }
+                ),
+                types.Tool(
                     name="search_transactions",
-                    description="Search transactions by text in payee, memo, or category fields",
+                    description="Search transactions by text in payee, original statement name, notes, tags, or category",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -145,6 +178,9 @@ class QuickenMCPServer:
                 elif name == "list_transactions":
                     result = self.tools.list_transactions(
                         account_type=arguments.get("account_type"),
+                        account=arguments.get("account"),
+                        business_personal=arguments.get("business_personal"),
+                        include_transfers=arguments.get("include_transfers", True),
                         date_from=arguments.get("date_from"),
                         date_to=arguments.get("date_to"),
                         category=arguments.get("category"),
@@ -157,6 +193,13 @@ class QuickenMCPServer:
                     result = self.tools.get_summaries(arguments.get("period", "month"))
                 elif name == "get_categories":
                     result = self.tools.get_categories()
+                elif name == "get_cash_flow":
+                    result = self.tools.get_cash_flow(
+                        date_from=arguments.get("date_from"),
+                        date_to=arguments.get("date_to"),
+                        business_personal=arguments.get("business_personal"),
+                        by_category=arguments.get("by_category", False)
+                    )
                 elif name == "search_transactions":
                     result = self.tools.search_transactions(
                         arguments["search_term"],
@@ -222,16 +265,17 @@ class QuickenMCPServer:
 
             elif uri == "quicken://transactions_export":
                 # Export all transactions as CSV
-                result = self.tools.run_sql("SELECT date, payee, amount, category, memo FROM transactions ORDER BY date DESC")
+                import csv, io
+                result = self.tools.run_sql("SELECT date, account, payee, amount, category, business_personal, memo "
+                                            "FROM transactions ORDER BY date DESC LIMIT 100000")
                 if result["success"]:
-                    csv_lines = ["Date,Payee,Amount,Category,Memo"]
+                    buf = io.StringIO()
+                    w = csv.writer(buf)
+                    w.writerow(["Date", "Account", "Payee", "Amount", "Category", "Business/Personal", "Memo"])
                     for row in result["rows"]:
-                        # Escape commas in text fields
-                        payee = str(row.get("payee", "")).replace(",", ";")
-                        category = str(row.get("category", "")).replace(",", ";")
-                        memo = str(row.get("memo", "")).replace(",", ";")
-                        csv_lines.append(f"{row.get('date','')},{payee},{row.get('amount','')},{category},{memo}")
-                    return "\n".join(csv_lines)
+                        w.writerow([row.get(k) if row.get(k) is not None else "" for k in
+                                    ("date", "account", "payee", "amount", "category", "business_personal", "memo")])
+                    return buf.getvalue()
                 else:
                     return "Error exporting transactions"
 

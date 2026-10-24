@@ -15,3 +15,8 @@ mcpb-bundle/*
 
 # personal data
 data/personal-data.qif
+
+# exports and personal data
+data/
+*.csv
+!tests/**/*.csv
