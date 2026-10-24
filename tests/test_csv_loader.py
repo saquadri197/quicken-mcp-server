@@ -153,3 +153,19 @@ def test_one_offs_and_extra_transfers_left_out_of_cash_flow(tmp_path):
     assert oct_["spending"] == pytest.approx(59.87 + 987.68)
     net_loss = conn.execute("SELECT SUM(amount) FROM transactions WHERE category ILIKE 'theft loss%'").fetchone()[0]
     assert float(net_loss) == pytest.approx(-4000)
+
+
+def test_business_rows_count_even_when_marked_excluded(tmp_path):
+    # Quicken exports business rows with Exclusion=yes (kept out of the personal
+    # Spending Plan only); they must still count as business spending.
+    rows = SAMPLE + (
+        '"Oct 16, 2026",Facebook,Advertising,-21.00,Blue Business Cash(TM),HM Syed Enterprise LLC,yes,,\n'
+        '"Oct 14, 2026",T-mobile,Utilities:Phone,-21.00,360 Savings,HM Syed Enterprise LLC,yes,,\n'
+        '"Oct 14, 2026",T-mobile,Utilities:Phone,-188.86,360 Savings,Personal,no,,\n'
+    )
+    (tmp_path / "x.csv").write_text(rows)
+    conn = duckdb.connect(":memory:")
+    load_csv_to_duckdb(str(tmp_path / "x.csv"), conn)
+    oct_ = {r["business_personal"]: r for r in QuickenMCPTools(conn).get_cash_flow(date_from="2026-10-01")["rows"]}
+    assert oct_["HM Syed Enterprise LLC"]["spending"] == pytest.approx(21.19 + 21.00 + 21.00)
+    assert oct_["Personal"]["spending"] == pytest.approx(59.87 + 188.86)

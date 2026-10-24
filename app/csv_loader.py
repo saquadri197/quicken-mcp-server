@@ -172,6 +172,11 @@ def parse_csv(csv_path: str) -> Dict[str, List[Dict]]:
                 skipped += 1
                 continue
             account = get(row, "account") or None
+            bp = get(row, "business_personal") or None
+            # Quicken marks every business-tagged row "excluded" because business
+            # spending is kept out of the personal Spending Plan, not out of reports.
+            # The CSV can't tell the two apart, so the flag is ignored for business rows.
+            excluded = _parse_bool(get(row, "exclusion")) and _norm(bp or "personal") in {"personal", "split"}
             transactions.append({
                 "tx_id": len(transactions) + 1,
                 "date": date,
@@ -183,8 +188,8 @@ def parse_csv(csv_path: str) -> Dict[str, List[Dict]]:
                 "amount": amount,
                 "memo": get(row, "memo") or None,
                 "tags": get(row, "tags") or None,
-                "business_personal": get(row, "business_personal") or None,
-                "excluded": _parse_bool(get(row, "exclusion")),
+                "business_personal": bp,
+                "excluded": excluded,
                 "number": get(row, "number") or None,
                 "cleared": get(row, "cleared") or None,
             })
