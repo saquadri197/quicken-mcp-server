@@ -1,6 +1,6 @@
 # Core dependencies
 mcp>=1.2,<2  # 2.x removed the lowlevel Server decorators this server uses
-duckdb>=0.9.0
+duckdb>=0.9.0,<2  # 2.x wheels need AVX; many homelab CPUs (e.g. Celeron N5105) lack it
 starlette>=0.27.0
 uvicorn[standard]>=0.23.0
 

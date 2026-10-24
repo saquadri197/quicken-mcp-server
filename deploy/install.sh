@@ -39,7 +39,7 @@ fi
 echo "==> Building Python environment"
 python3 -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/pip" install -q --upgrade pip
-"$APP_DIR/venv/bin/pip" install -q "mcp>=1.2,<2" "duckdb>=0.9.0"
+"$APP_DIR/venv/bin/pip" install -q "mcp>=1.2,<2" "duckdb>=0.9.0,<2"
 
 echo "==> Creating data folder $DATA_DIR"
 mkdir -p "$DATA_DIR"
