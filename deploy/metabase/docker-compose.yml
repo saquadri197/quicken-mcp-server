@@ -47,6 +47,29 @@ services:
       sh -c "pip install --quiet --no-cache-dir 'psycopg[binary]>=3.1,<4' &&
              python -I /app/loader/load_to_postgres.py"
 
+  # Temporary (until Dec 15, 2026): loads the weekly Palisade lease-watch CSVs
+  # from the share's lease-watch folder into schema "lease". Remove afterwards.
+  lease-loader:
+    image: python:3.12-slim
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${PG_ADMIN_USER}
+      PGPASSWORD: ${PG_ADMIN_PASSWORD}
+      PGDATABASE: finance
+      LEASE_DIR: /data/lease-watch
+      INTERVAL_SECONDS: "300"
+    volumes:
+      - /mnt/quicken-data:/data:ro
+      - ./sql:/app/sql:ro
+      - ./lease_watch:/app/lease_watch:ro
+    command: >
+      sh -c "pip install --quiet --no-cache-dir 'psycopg[binary]>=3.1,<4' &&
+             python -I /app/lease_watch/load_lease.py"
+
   metabase:
     image: metabase/metabase:${METABASE_VERSION}
     restart: unless-stopped

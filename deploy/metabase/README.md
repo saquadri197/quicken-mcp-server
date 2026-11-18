@@ -55,3 +55,28 @@ cd /opt/quicken-mcp-server/deploy/metabase
 docker compose exec postgres psql -U finance_admin -d finance
 -- e.g. INSERT INTO finance.one_offs VALUES ('2026-12-02','Hyundai%',450.00,'Brake job');
 ```
+
+## Lease Watch (temporary, Nov 18 – Dec 15, 2026)
+
+A weekly Palisade lease search writes four CSVs to the `lease-watch` folder on
+the share (`Q:\lease-watch` on accountant): `runs`, `vehicles`, `offers` and
+`quotes`. The `lease-loader` container loads them into schema `lease` every
+5 minutes. The Quicken loader only reads CSVs at the top of the share, so it never
+sees these.
+
+One-time setup on the VM:
+
+```bash
+cd /opt/quicken-mcp-server && git pull
+cd deploy/metabase && docker compose up -d          # starts lease-loader
+docker compose logs --tail 5 lease-loader           # expect "Loaded offers.csv: N rows"
+python3 lease_watch/create_dashboard.py             # asks for your Metabase admin login
+```
+
+`lease_watch/lease_calc.py` is the NJ lease calculator the weekly run uses:
+it applies the Santa Fe trade equity to fees and tax first, and reports
+"effective_monthly", the real cost per month including that equity.
+
+Remove after Dec 15: delete the `lease-loader` service, run
+`python3 lease_watch/create_dashboard.py --replace` only if you want to rebuild,
+and drop the data with `DROP SCHEMA lease CASCADE;` in psql.
