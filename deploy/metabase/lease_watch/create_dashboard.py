@@ -24,29 +24,29 @@ TAG = "[lease-watch]"   # put in each question's description so --replace can fi
 
 CARDS = [
     # name, display, sql, (col, row, width, height), visualization settings
-    ("Best payment with trade, this week", "scalar", """
-SELECT min(est_monthly_with_trade) AS "Payment / month"
+    ("Lowest monthly payment this week", "scalar", """
+SELECT min(est_monthly_with_trade) AS "Monthly payment"
 FROM lease.current_offers WHERE kind <> 'target' AND coalesce(est_cash_at_signing, 0) = 0
 """, (0, 0, 6, 3), {"scalar.prefix": "$"}),
-    ("Best real cost per month, this week", "scalar", """
-SELECT min(effective_monthly) AS "Real cost / month" FROM lease.current_offers WHERE kind <> 'target'
+    ("Lowest total lease cost / 36 this week", "scalar", """
+SELECT min(effective_monthly) AS "Total lease cost / 36" FROM lease.current_offers WHERE kind <> 'target'
 """, (6, 0, 6, 3), {"scalar.prefix": "$"}),
-    ("Offers meeting $550 / $0 down", "scalar", """
+    ("Deals at $550/month or less, $0 down", "scalar", """
 SELECT count(*) FILTER (WHERE meets_target AND kind <> 'target') AS "Meeting target" FROM lease.current_offers
 """, (12, 0, 6, 3), {}),
     ("Matching cars still listed", "scalar", """
 SELECT count(*) AS "Cars" FROM lease.vehicle_status WHERE listed_now
 """, (18, 0, 6, 3), {}),
-    ("Best payment and real cost by week", "line", """
+    ("Lowest monthly payment by week", "line", """
 SELECT check_date AS "Week",
-       min(est_monthly_with_trade) AS "Best payment with trade",
-       min(effective_monthly)      AS "Best real cost / month",
+       min(est_monthly_with_trade) AS "Monthly payment",
+       min(effective_monthly)      AS "Total lease cost / 36",
        550                         AS "Target"
 FROM lease.offers
 WHERE est_monthly_with_trade IS NOT NULL AND kind <> 'target'
 GROUP BY check_date ORDER BY check_date
 """, (0, 3, 12, 6), {"graph.dimensions": ["Week"],
-                     "graph.metrics": ["Best payment with trade", "Best real cost / month", "Target"]}),
+                     "graph.metrics": ["Monthly payment", "Total lease cost / 36", "Target"]}),
     ("Advertised price by car", "line", """
 SELECT check_date AS "Week", dealer || ' ' || right(coalesce(vin, ''), 6) AS "Car",
        advertised_price AS "Advertised price"
@@ -56,8 +56,8 @@ ORDER BY 1
     ("Current offers and estimates", "table", """
 SELECT deal_id AS "Deal", source AS "Source", kind AS "Type", model_year::text AS "Year", seats AS "Seats",
        right(coalesce(vin, ''), 6) AS "VIN", monthly_advertised AS "Advertised / mo",
-       due_at_signing AS "Due at signing", est_monthly_with_trade AS "Payment with trade",
-       est_cash_at_signing AS "Extra cash", effective_monthly AS "Real cost / mo",
+       due_at_signing AS "Due at signing", est_monthly_with_trade AS "Monthly payment",
+       est_cash_at_signing AS "Extra cash", effective_monthly AS "Total cost / 36",
        meets_target AS "Meets target", expires AS "Expires", notes AS "Notes", url AS "Link"
 FROM lease.current_offers
 """, (0, 9, 24, 7), {}),
@@ -162,7 +162,7 @@ def main():
         "name": DASHBOARD, "collection_id": coll_id,
         "description": "Weekly Palisade Hybrid SEL Premium AWD lease watch, Nov 18 - Dec 15, 2026. "
                        "Target: $550/month or less for 36 months with the Santa Fe trade and $0 extra "
-                       "at signing. 'Real cost / month' spreads the trade equity over the lease."})
+                       "at signing. 'Total lease cost / 36' spreads everything, Santa Fe included, over the 36 months."})
     mb.call("PUT", f"/api/dashboard/{dash['id']}", {"dashcards": dashcards})
     print(f"Done: {a.url}/dashboard/{dash['id']}")
 

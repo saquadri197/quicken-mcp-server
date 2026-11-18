@@ -202,8 +202,8 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
         return [label] + [fmt(c) if fmt else money(c[key], cents) for c in cols]
 
     table = [
-        ["", f"Opening offer\n(MSRP - {money(OPEN_DISCOUNT)})", f"Target\n(MSRP - {money(TARGET_DISCOUNT)})",
-         "Walk-away\n(MSRP, no add-ons)"],
+        ["", f"Opening offer\n({money(OPEN_DISCOUNT)} off)", f"Target\n({money(TARGET_DISCOUNT)} off)",
+         "Walk-away\n(no discount)"],
         row("Selling price", "price"),
         row("- Lease cash", "lease_cash"),
         row("+ Acquisition fee", None, fmt=lambda c: money(ACQ_FEE)),
@@ -213,7 +213,7 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
         row("Residual value", "residual"),
         row("Depreciation / month", "depreciation", True),
         row("Rent charge / month", "rent", True),
-        row("Monthly payment", "monthly_payment", True),
+        row("Monthly payment (Santa Fe applied)", "monthly_payment", True),
         row("First payment", "monthly_payment", True),
         row("Doc fee", "doc_fee"),
         row("NJ sales tax (paid up front)", "nj_sales_tax", True),
@@ -223,7 +223,7 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
         row("Paid by the Santa Fe", "trade_used"),
         row("Extra cash from you", "cash_at_signing"),
         row("Total cost over 36 months", "total_cost"),
-        row("Real cost per month", "effective_monthly", True),
+        row("Total lease cost / 36 (incl. Santa Fe)", "effective_monthly", True),
     ]
     bold = (6, 10, 18, 20)
     t = grid(table, [2.75 * inch] + [(W - 2.75 * inch) / 3] * 3, bold_rows=bold)
@@ -232,8 +232,8 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
     story.append(t)
     story.append(Paragraph(
         f"The payment meets the {money(TARGET_PAYMENT)} goal at every price here because the Santa Fe pays the fees "
-        f"and about {money(at_msrp['cap_cost_reduction'])} of the price up front. 'Real cost per month' counts that "
-        f"equity: it is the number to compare deals on. The payment stays at or under {money(TARGET_PAYMENT)} "
+        f"and about {money(at_msrp['cap_cost_reduction'])} of the price up front. The last line spreads everything, "
+        f"Santa Fe included, over the 36 months; use it to compare deals. The payment stays at or under {money(TARGET_PAYMENT)} "
         f"up to a selling price of about {money(max_550)}, but there is no reason to pay above MSRP.",
         st["small"]))
 
@@ -249,14 +249,14 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
             cells.append(f"{money(e['monthly_payment'])} / {money(e['effective_monthly'])}")
         sens.append([f"{money(msrp - d)}" + (" (MSRP)" if d == 0 else f" (-{money(d)})")] + cells)
     story.append(grid(sens, [1.9 * inch] + [(W - 1.9 * inch) / 3] * 3))
-    story.append(Paragraph("Each cell: monthly payment / real cost per month, with the $10,000 trade and $0 extra cash.",
+    story.append(Paragraph("Each cell: monthly payment / total lease cost / 36, with the $10,000 Santa Fe applied and $0 extra cash.",
                            st["small"]))
     story.append(Spacer(1, 6))
     tr = [["Santa Fe value"] + [money(x) for x in (8000, 9000, 10000, 11000, 12000)]]
-    tr.append(["Payment at target price"] + [
+    tr.append([f"Monthly payment, {money(TARGET_DISCOUNT)} off"] + [
         money(estimate(msrp - TARGET_DISCOUNT, msrp, rpct, mf, x, TERM, ACQ_FEE, doc_fee, REG_FEES, lc)["monthly_payment"])
         for x in (8000, 9000, 10000, 11000, 12000)])
-    tr.append(["Real cost per month"] + [
+    tr.append(["Total lease cost / 36"] + [
         money(estimate(msrp - TARGET_DISCOUNT, msrp, rpct, mf, x, TERM, ACQ_FEE, doc_fee, REG_FEES, lc)["effective_monthly"])
         for x in (8000, 9000, 10000, 11000, 12000)])
     story.append(grid(tr, [1.9 * inch] + [(W - 1.9 * inch) / 5] * 5))
