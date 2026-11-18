@@ -70,7 +70,7 @@ One-time setup on the VM:
 cd /opt/quicken-mcp-server && git pull
 cd deploy/metabase && docker compose up -d          # starts lease-loader
 docker compose logs --tail 5 lease-loader           # expect "Loaded offers.csv: N rows"
-python3 lease_watch/create_dashboard.py             # asks for your Metabase admin login
+python3 lease_watch/create_dashboard.py             # asks for your Metabase admin login (already done: dashboard 5)
 ```
 
 `lease_watch/lease_calc.py` is the NJ lease calculator the weekly run uses:

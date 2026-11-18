@@ -54,7 +54,7 @@ FROM lease.vehicles WHERE advertised_price IS NOT NULL
 ORDER BY 1
 """, (12, 3, 12, 6), {"graph.dimensions": ["Week", "Car"], "graph.metrics": ["Advertised price"]}),
     ("Current offers and estimates", "table", """
-SELECT source AS "Source", kind AS "Type", model_year AS "Year", seats AS "Seats",
+SELECT source AS "Source", kind AS "Type", model_year::text AS "Year", seats AS "Seats",
        right(coalesce(vin, ''), 6) AS "VIN", monthly_advertised AS "Advertised / mo",
        due_at_signing AS "Due at signing", est_monthly_with_trade AS "Payment with trade",
        est_cash_at_signing AS "Extra cash", effective_monthly AS "Real cost / mo",
@@ -63,7 +63,7 @@ FROM lease.current_offers
 """, (0, 9, 24, 7), {}),
     ("Matching cars", "table", """
 SELECT dealer AS "Dealer", location AS "Where", miles_from_nb AS "Miles",
-       model_year AS "Year", seats AS "Seats", exterior || ' / ' || interior AS "Colors",
+       model_year::text AS "Year", seats AS "Seats", exterior || ' / ' || interior AS "Colors",
        vin AS "VIN", msrp AS "MSRP", advertised_price AS "Advertised", doc_fee AS "Doc fee",
        status AS "Status", first_seen AS "First seen", check_date AS "Last seen",
        listed_now AS "Listed now", url AS "Link"
