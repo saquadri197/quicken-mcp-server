@@ -1,0 +1,76 @@
+# Metabase dashboards for the Quicken/Simplifi exports.
+#
+#   postgres  - holds the finance data (schema "finance") and Metabase's own settings
+#   loader    - every 15 minutes, loads the newest CSV from the quicken-data share
+#   metabase  - the dashboards, on http://<vm>:3000
+#
+# The share is mounted read-only on the VM at /mnt/quicken-data (see setup-vm.sh).
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_ADMIN_USER}
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD}
+      POSTGRES_DB: finance
+      # Read-only login that Metabase uses to read the finance data
+      PG_READER_PASSWORD: ${PG_READER_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/00-init.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_ADMIN_USER} -d finance"]
+      interval: 10s
+      retries: 10
+
+  loader:
+    image: python:3.12-slim
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${PG_ADMIN_USER}
+      PGPASSWORD: ${PG_ADMIN_PASSWORD}
+      PGDATABASE: finance
+      DATA_DIR: /data
+      INTERVAL_SECONDS: "900"
+      REPO_DIR: /app/src
+    volumes:
+      - /mnt/quicken-data:/data:ro
+      - ../..:/app/src:ro                 # this repo: reuses app/csv_loader.py
+      - ./sql:/app/sql:ro
+      - ./loader:/app/loader:ro
+    command: >
+      sh -c "pip install --quiet --no-cache-dir 'psycopg[binary]>=3.1,<4' &&
+             python -I /app/loader/load_to_postgres.py"
+
+  metabase:
+    image: metabase/metabase:${METABASE_VERSION}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: postgres
+      MB_DB_PORT: "5432"
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: ${PG_ADMIN_USER}
+      MB_DB_PASS: ${PG_ADMIN_PASSWORD}
+      MB_SITE_URL: http://${VM_HOSTNAME}:3000
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_CHECK_FOR_UPDATES: "true"
+      JAVA_TIMEZONE: America/New_York
+      JAVA_OPTS: -Xmx2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      retries: 10
+
+volumes:
+  pgdata:
