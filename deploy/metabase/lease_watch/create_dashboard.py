@@ -34,8 +34,8 @@ SELECT min(effective_monthly) AS "Total lease cost / 36" FROM lease.current_offe
     ("Deals at $550/month or less, $0 down", "scalar", """
 SELECT count(*) FILTER (WHERE meets_target AND kind <> 'target') AS "Meeting target" FROM lease.current_offers
 """, (12, 0, 6, 3), {}),
-    ("Matching cars still listed", "scalar", """
-SELECT count(*) AS "Cars" FROM lease.vehicle_status WHERE listed_now
+    ("Deals listed now", "scalar", """
+SELECT count(*) AS "Deals" FROM lease.vehicle_status WHERE listed_now AND deal_id IS NOT NULL
 """, (18, 0, 6, 3), {}),
     ("Lowest monthly payment by week", "line", """
 SELECT check_date AS "Week",
@@ -48,10 +48,10 @@ GROUP BY check_date ORDER BY check_date
 """, (0, 3, 12, 6), {"graph.dimensions": ["Week"],
                      "graph.metrics": ["Monthly payment", "Total lease cost / 36", "Target"]}),
     ("Advertised price by car", "line", """
-SELECT check_date AS "Week", dealer || ' ' || right(coalesce(vin, ''), 6) AS "Car",
-       advertised_price AS "Advertised price"
-FROM lease.vehicles WHERE advertised_price IS NOT NULL
-ORDER BY 1
+SELECT check_date AS "Week", coalesce(deal_id || ' ', '') || dealer || ' ' || right(coalesce(vin, ''), 6) AS "Car",
+       max(advertised_price) AS "Advertised price"
+FROM lease.vehicles WHERE advertised_price IS NOT NULL AND coalesce(status, '') NOT IN ('gone', 'sold')
+GROUP BY 1, 2 ORDER BY 1
 """, (12, 3, 12, 6), {"graph.dimensions": ["Week", "Car"], "graph.metrics": ["Advertised price"]}),
     ("Current offers and estimates", "table", """
 SELECT deal_id AS "Deal", source AS "Source", kind AS "Type", model_year::text AS "Year", seats AS "Seats",
