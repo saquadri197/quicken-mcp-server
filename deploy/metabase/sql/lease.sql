@@ -91,7 +91,8 @@ CREATE TABLE IF NOT EXISTS lease.load_log (
 );
 
 -- Latest sighting of each vehicle, and whether it was still listed last check.
-CREATE OR REPLACE VIEW lease.vehicle_status AS
+DROP VIEW IF EXISTS lease.vehicle_status;
+CREATE VIEW lease.vehicle_status AS
 WITH last_check AS (SELECT max(check_date) AS d FROM lease.vehicles),
      latest AS (
         SELECT DISTINCT ON (coalesce(vin, dealer || model_year || exterior)) v.*
@@ -105,7 +106,8 @@ SELECT l.*,
 FROM latest l;
 
 -- Offers from the most recent check, best first.
-CREATE OR REPLACE VIEW lease.current_offers AS
+DROP VIEW IF EXISTS lease.current_offers;
+CREATE VIEW lease.current_offers AS
 SELECT *
 FROM lease.offers
 WHERE check_date = (SELECT max(check_date) FROM lease.offers)
