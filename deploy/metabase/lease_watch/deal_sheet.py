@@ -156,13 +156,16 @@ def sheet(deal_id, v, o, trade, out_dir, generated, contact=None):
 
     story.append(Paragraph(f"Deal {deal_id} &nbsp;&middot;&nbsp; Negotiation sheet", st["title"]))
     story.append(Paragraph(
-        f"{year} Palisade Hybrid {v.get('trim', '')}, {v.get('seats', '')} seats, "
+        f"{year} Palisade Hybrid {v.get('trim', '')}, " + (f"{v['seats']} seats, " if v.get("seats") else "") +
         f"{v.get('exterior', '')} / {v.get('interior', '')} &nbsp;&middot;&nbsp; {dealer}, {v.get('location', '')}",
         st["base"]))
     story.append(Paragraph(
         f"Prepared {generated:%b %d, %Y} from listings seen {v.get('check_date', '')}. "
         "<b>These are estimates, not a dealer offer.</b> Replace them with the dealer's written worksheet.",
         st["small"]))
+    if (v.get("notes") or "").strip():
+        story.append(Paragraph(f"<b>Note:</b> {v['notes'].strip()}".replace("&", "&amp;").replace("&amp;nbsp;", "&nbsp;"),
+                               ParagraphStyle("note", parent=st["small"], textColor=WARN)))
     story.append(Spacer(1, 8))
 
     # Car and terms side by side
