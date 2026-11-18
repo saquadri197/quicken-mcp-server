@@ -2,7 +2,8 @@
 
     python3 -I deal_sheet.py --data DIR --out DIR [--trade 10000] [--deal PL-001]
 
-DIR holds the lease-watch CSVs (vehicles.csv, offers.csv). A deal is a specific
+DIR holds the lease-watch CSVs (vehicles.csv, offers.csv, and optionally dealers.csv
+with each dealer's contact details, matched on the dealer name). A deal is a specific
 car with a deal_id (PL-001, ...). For each deal the newest "estimate" row in
 offers.csv supplies the program assumptions (residual, money factor, lease
 cash), and the newest vehicles.csv row supplies the car and dealer. The math
@@ -131,7 +132,7 @@ def grid(data, widths, header=True, bold_rows=(), zebra=True, align_right_from=1
     return t
 
 
-def sheet(deal_id, v, o, trade, out_dir, generated):
+def sheet(deal_id, v, o, trade, out_dir, generated, contact=None):
     st = styles()
     msrp = num(v.get("msrp")) or num(o.get("msrp"))
     doc_fee = num(v.get("doc_fee")) or 0
@@ -144,7 +145,6 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
     opening = breakdown(msrp - OPEN_DISCOUNT, msrp, rpct, mf, trade, lc, doc_fee)
     target = breakdown(msrp - TARGET_DISCOUNT, msrp, rpct, mf, trade, lc, doc_fee)
     at_msrp = breakdown(msrp, msrp, rpct, mf, trade, lc, doc_fee)
-    max_550 = max_price_for_payment(msrp, rpct, mf, trade, lc, doc_fee, TARGET_PAYMENT)
 
     slug = re.sub(r"[^A-Za-z0-9]+", "-", dealer).strip("-")
     path = Path(out_dir) / f"{deal_id}_{slug}_{year}_{vin[-6:]}.pdf"
@@ -181,19 +181,44 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
     story.append(Table([[left, right]], colWidths=[W / 2, W / 2], hAlign="LEFT",
                        style=[("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
 
+    story.append(Paragraph("Dealer contact", st["h2"]))
+    c = contact or {}
+    if c:
+        email = c.get("contact_email", "")
+        if email and c.get("email_note"):
+            email += f" ({c['email_note']})"
+        person = ", ".join(x for x in (c.get("contact_name"), c.get("contact_title")) if x)
+        rows = [["Address", Paragraph(c.get("address", "") or "-", st["cell"]),
+                 "Sales phone", c.get("sales_phone", "") or "-"],
+                ["Contact", Paragraph(person or "-", st["cell"]),
+                 "Direct", c.get("contact_phone", "") or c.get("main_phone", "") or "-"],
+                ["Email", Paragraph(email or "Use the website contact form", st["cell"]),
+                 "Sales hours", Paragraph(c.get("sales_hours", "") or "-", st["cell"])],
+                ["Also", Paragraph(c.get("other_contacts", "") or "-", st["cell"]),
+                 "Website", Paragraph((c.get("contact_page") or c.get("website") or "-").replace("&", "&amp;"), st["cell"])]]
+        ct = grid(rows, [0.7 * inch, 3.1 * inch, 0.9 * inch, W - 4.7 * inch], header=False, zebra=False,
+                  align_right_from=9)
+        ct.setStyle(TableStyle([("FONT", (0, 0), (0, -1), "Helvetica-Bold", 9.5),
+                                ("FONT", (2, 0), (2, -1), "Helvetica-Bold", 9.5),
+                                ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        story.append(ct)
+        story.append(Paragraph(f"Contact details from the dealer's website, checked {c.get('checked_date', '') or '-'}.",
+                               st["small"]))
+    else:
+        story.append(Paragraph("Not looked up yet: see the dealer's website.", st["small"]))
+
     story.append(Paragraph("Program assumptions", st["h2"]))
     apr = mf * 2400
-    story.append(grid([
-        ["Item", "Value", "Source"],
-        ["Residual", f"{rpct:.0f}% of MSRP = {money(at_msrp['residual'])}", "Implied from Hyundai's advertised lease"],
-        ["Money factor", f"{mf:.5f} (about {apr:.1f}% APR)", "Implied; ask for the buy rate"],
-        ["Lease cash", money(lc), f"Hyundai program, ends {o.get('expires', '') or '-'}"],
-        ["Acquisition fee", money(ACQ_FEE), "Hyundai Motor Finance"],
-        ["NJ sales tax", Paragraph(f"{NJ_TAX * 100:.3f}% of payments + cap reduction + doc fee, less the trade value",
-                                   st["cell"]), "NJ Division of Taxation"],
-        ["Luxury surcharge", "0.4% of the price before trade", "NJ, price of $45,000 or more"],
-        ["Registration / title", money(REG_FEES), "Estimate"],
-    ], [1.25 * inch, 3.05 * inch, W - 4.3 * inch], align_right_from=9))
+    pa = grid([
+        ["Residual", f"{rpct:.0f}% = {money(at_msrp['residual'])} (implied)",
+         "Lease cash", f"{money(lc)}, ends {o.get('expires', '') or '-'}"],
+        ["Money factor", f"{mf:.5f}, about {apr:.1f}% APR (implied)", "Acquisition fee", money(ACQ_FEE)],
+        ["NJ sales tax", f"{NJ_TAX * 100:.3f}%, trade value deducted", "Luxury surcharge", "0.4% of price"],
+        ["Registration", f"{money(REG_FEES)} (estimate)", "Doc fee", money(doc_fee)],
+    ], [1.0 * inch, 2.55 * inch, 1.15 * inch, W - 4.7 * inch], header=False, zebra=False, align_right_from=9)
+    pa.setStyle(TableStyle([("FONT", (0, 0), (0, -1), "Helvetica-Bold", 9.5),
+                            ("FONT", (2, 0), (2, -1), "Helvetica-Bold", 9.5)]))
+    story.append(pa)
 
     story.append(Paragraph("The numbers at three prices", st["h2"]))
     cols = [opening, target, at_msrp]
@@ -231,10 +256,8 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
                            ("TEXTCOLOR", (1, 10), (-1, 10), GOOD if at_msrp["monthly_payment"] <= TARGET_PAYMENT else WARN)]))
     story.append(t)
     story.append(Paragraph(
-        f"The payment meets the {money(TARGET_PAYMENT)} goal at every price here because the Santa Fe pays the fees "
-        f"and about {money(at_msrp['cap_cost_reduction'])} of the price up front. The last line spreads everything, "
-        f"Santa Fe included, over the 36 months; use it to compare deals. The payment stays at or under {money(TARGET_PAYMENT)} "
-        f"up to a selling price of about {money(max_550)}, but there is no reason to pay above MSRP.",
+        f"The Santa Fe covers the fees and about {money(at_msrp['cap_cost_reduction'])} of the price up front. The last "
+        f"line spreads everything, Santa Fe included, over 36 months, for comparing deals.",
         st["small"]))
 
     # Page 2
@@ -308,10 +331,8 @@ def sheet(deal_id, v, o, trade, out_dir, generated):
     ]))
     story.append(Spacer(1, 8))
     story.append(Paragraph(
-        "Estimates use Hyundai's advertised November program with the residual and money factor worked back from "
-        "the ad; neither is confirmed for this VIN. NJ lease tax uses the total-of-payments method with the owned "
-        "trade credit. Not financial advice: the decision is yours. Source listing: "
-        + (v.get("url") or "-").replace("&", "&amp;"),
+        "Estimates from Hyundai's advertised November program; residual and money factor are implied, not confirmed. "
+        "NJ tax per NJ Division of Taxation rules. Not financial advice: the decision is yours.",
         st["small"]))
 
     def footer(canvas, d):
@@ -338,6 +359,10 @@ def main():
                        if r.get("deal_id")], "deal_id")
     offers = latest([r for r in csv.DictReader(open(data / "offers.csv", encoding="utf-8-sig"))
                      if r.get("deal_id") and r.get("kind") in ("estimate", "dealer_quote")], "deal_id")
+    dealers = {}
+    if (data / "dealers.csv").exists():
+        dealers = {r["dealer"].strip().lower(): r
+                   for r in csv.DictReader(open(data / "dealers.csv", encoding="utf-8-sig")) if r.get("dealer")}
     Path(a.out).mkdir(parents=True, exist_ok=True)
     for deal_id in sorted(vehicles):
         if a.deal and deal_id not in a.deal:
@@ -345,7 +370,8 @@ def main():
         if deal_id not in offers or vehicles[deal_id].get("status") in ("gone", "sold"):
             print(f"skip {deal_id}: no current estimate or the car is gone")
             continue
-        print(sheet(deal_id, vehicles[deal_id], offers[deal_id], a.trade, a.out, dt.date.today()))
+        contact = dealers.get(vehicles[deal_id].get("dealer", "").strip().lower())
+        print(sheet(deal_id, vehicles[deal_id], offers[deal_id], a.trade, a.out, dt.date.today(), contact))
 
 
 if __name__ == "__main__":
