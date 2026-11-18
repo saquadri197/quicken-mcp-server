@@ -13,7 +13,7 @@ accountant (Chrome export) ──> \\192.168.3.136\quicken-data ──(read-only
 | Setting | Value |
 |---|---|
 | Name / IP | `metabase.syedaq.local`, a free address on VLAN 3 (e.g. 192.168.3.138), DHCP reservation + DNS record |
-| OS | Ubuntu Server 24.04 LTS |
+| OS | Debian 12 or 13 (or Ubuntu Server 24.04 LTS) |
 | vCPU / RAM / disk | 4 / 8 GB / 40 GB thin |
 | Network | VLAN 3 port group, VMXNET3 |
 | Autostart | On (Host → Manage → System → Autostart) |

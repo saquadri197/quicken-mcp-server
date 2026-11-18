@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup of the Metabase VM (Ubuntu Server 24.04 LTS).
+# One-time setup of the Metabase VM (Debian 12/13 or Ubuntu Server 24.04 LTS).
 # Run as root on the new VM:
 #   SHARE_USER=<samba user> bash setup-vm.sh <git-repo-url>
 # You'll be asked for the share password; it is stored in /root/.smb-quicken (mode 600).
@@ -13,7 +13,19 @@ APP=/opt/quicken-mcp-server
 
 echo "==> Packages"
 apt-get update -qq
-apt-get install -y -qq docker.io docker-compose-v2 cifs-utils git open-vm-tools >/dev/null
+apt-get install -y -qq ca-certificates curl gnupg cifs-utils git open-vm-tools openssl >/dev/null
+
+echo "==> Docker (from Docker's own apt repo; works on Debian and Ubuntu)"
+if ! docker compose version >/dev/null 2>&1; then
+  . /etc/os-release                      # ID=debian|ubuntu, VERSION_CODENAME=bookworm|trixie|noble...
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$ID $VERSION_CODENAME stable" \
+    > /etc/apt/sources.list.d/docker.list
+  apt-get update -qq
+  apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin >/dev/null
+fi
 systemctl enable --now docker
 
 echo "==> Read-only mount of the quicken-data share"
