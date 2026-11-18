@@ -54,7 +54,7 @@ FROM lease.vehicles WHERE advertised_price IS NOT NULL
 ORDER BY 1
 """, (12, 3, 12, 6), {"graph.dimensions": ["Week", "Car"], "graph.metrics": ["Advertised price"]}),
     ("Current offers and estimates", "table", """
-SELECT source AS "Source", kind AS "Type", model_year::text AS "Year", seats AS "Seats",
+SELECT deal_id AS "Deal", source AS "Source", kind AS "Type", model_year::text AS "Year", seats AS "Seats",
        right(coalesce(vin, ''), 6) AS "VIN", monthly_advertised AS "Advertised / mo",
        due_at_signing AS "Due at signing", est_monthly_with_trade AS "Payment with trade",
        est_cash_at_signing AS "Extra cash", effective_monthly AS "Real cost / mo",
@@ -62,7 +62,7 @@ SELECT source AS "Source", kind AS "Type", model_year::text AS "Year", seats AS 
 FROM lease.current_offers
 """, (0, 9, 24, 7), {}),
     ("Matching cars", "table", """
-SELECT dealer AS "Dealer", location AS "Where", miles_from_nb AS "Miles",
+SELECT deal_id AS "Deal", dealer AS "Dealer", location AS "Where", miles_from_nb AS "Miles",
        model_year::text AS "Year", seats AS "Seats", exterior || ' / ' || interior AS "Colors",
        vin AS "VIN", msrp AS "MSRP", advertised_price AS "Advertised", doc_fee AS "Doc fee",
        status AS "Status", first_seen AS "First seen", check_date AS "Last seen",
@@ -71,7 +71,7 @@ FROM lease.vehicle_status
 ORDER BY listed_now DESC, model_year DESC, miles_from_nb
 """, (0, 16, 24, 7), {}),
     ("Quote requests", "table", """
-SELECT dealer AS "Dealer", right(coalesce(vin, ''), 6) AS "VIN", status AS "Status",
+SELECT deal_id AS "Deal", dealer AS "Dealer", right(coalesce(vin, ''), 6) AS "VIN", status AS "Status",
        requested_date AS "Requested", last_update AS "Updated", monthly AS "Quoted / mo",
        due_at_signing AS "Due", selling_price AS "Price", money_factor AS "MF",
        residual_pct AS "Residual %", notes AS "Notes"

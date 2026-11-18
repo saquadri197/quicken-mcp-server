@@ -77,6 +77,13 @@ CREATE TABLE IF NOT EXISTS lease.quotes (
     notes           text
 );
 
+-- Added Nov 18: deal numbers (PL-001, ...) tie a car, its offers and its PDF
+-- negotiation sheet together; lease_cash is the manufacturer lease incentive used.
+ALTER TABLE lease.vehicles ADD COLUMN IF NOT EXISTS deal_id text;
+ALTER TABLE lease.offers   ADD COLUMN IF NOT EXISTS deal_id text;
+ALTER TABLE lease.offers   ADD COLUMN IF NOT EXISTS lease_cash numeric(10,2);
+ALTER TABLE lease.quotes   ADD COLUMN IF NOT EXISTS deal_id text;
+
 CREATE TABLE IF NOT EXISTS lease.load_log (
     loaded_at timestamptz NOT NULL DEFAULT now(),
     file      text NOT NULL,

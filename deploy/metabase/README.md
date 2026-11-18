@@ -73,6 +73,10 @@ docker compose logs --tail 5 lease-loader           # expect "Loaded offers.csv:
 python3 lease_watch/create_dashboard.py             # asks for your Metabase admin login (already done: dashboard 5)
 ```
 
+Each matching car gets a deal number (PL-001, ...). `lease_watch/deal_sheet.py`
+makes a two-page PDF negotiation sheet per deal (`--data DIR --out DIR`); the
+weekly run saves them to `Q:\lease-watch\deals`.
+
 `lease_watch/lease_calc.py` is the NJ lease calculator the weekly run uses:
 it applies the Santa Fe trade equity to fees and tax first, and reports
 "effective_monthly", the real cost per month including that equity.
