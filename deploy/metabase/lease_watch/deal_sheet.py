@@ -142,9 +142,20 @@ def sheet(deal_id, v, o, trade, out_dir, generated, contact=None):
     year, vin = v.get("model_year", ""), v.get("vin", "")
     dealer = v.get("dealer", "")
 
-    opening = breakdown(msrp - OPEN_DISCOUNT, msrp, rpct, mf, trade, lc, doc_fee)
-    target = breakdown(msrp - TARGET_DISCOUNT, msrp, rpct, mf, trade, lc, doc_fee)
-    at_msrp = breakdown(msrp, msrp, rpct, mf, trade, lc, doc_fee)
+    # When the dealer already advertises a discount, negotiate down from that price instead of MSRP.
+    adv = num(v.get("advertised_price"))
+    walk_p = msrp
+    if adv and adv - doc_fee < msrp - 500:
+        walk_p = adv - doc_fee
+        open_p, target_p = walk_p - 2000, walk_p - 1000
+    else:
+        open_p, target_p = msrp - OPEN_DISCOUNT, msrp - TARGET_DISCOUNT
+    opening = breakdown(open_p, msrp, rpct, mf, trade, lc, doc_fee)
+    target = breakdown(target_p, msrp, rpct, mf, trade, lc, doc_fee)
+    at_msrp = breakdown(walk_p, msrp, rpct, mf, trade, lc, doc_fee)
+
+    def off(price):
+        return "no discount" if price >= msrp else f"{money(msrp - price)} off"
 
     slug = re.sub(r"[^A-Za-z0-9]+", "-", dealer).strip("-")
     path = Path(out_dir) / f"{deal_id}_{slug}_{year}_{vin[-6:]}.pdf"
@@ -170,7 +181,7 @@ def sheet(deal_id, v, o, trade, out_dir, generated, contact=None):
 
     # Car and terms side by side
     car = [["The car", ""],
-           ["VIN", vin], ["Dealer", f"{dealer}, {v.get('location', '')} ({v.get('miles_from_nb', '')} mi)"],
+           ["VIN", vin], ["Dealer", f"{dealer} ({v.get('miles_from_nb', '')} mi)"],
            ["MSRP", money(msrp)], ["Advertised price", money(num(v.get("advertised_price")))],
            ["Doc fee", money(doc_fee)], ["Listing status", v.get("status", "")]]
     terms = [["Your terms", ""],
@@ -230,8 +241,8 @@ def sheet(deal_id, v, o, trade, out_dir, generated, contact=None):
         return [label] + [fmt(c) if fmt else money(c[key], cents) for c in cols]
 
     table = [
-        ["", f"Opening offer\n({money(OPEN_DISCOUNT)} off)", f"Target\n({money(TARGET_DISCOUNT)} off)",
-         "Walk-away\n(no discount)"],
+        ["", f"Opening offer\n({off(open_p)})", f"Target\n({off(target_p)})",
+         "Walk-away\n(" + ("advertised price" if walk_p < msrp else "no discount") + ")"],
         row("Selling price", "price"),
         row("- Lease cash", "lease_cash"),
         row("+ Acquisition fee", None, fmt=lambda c: money(ACQ_FEE)),
@@ -271,19 +282,20 @@ def sheet(deal_id, v, o, trade, out_dir, generated, contact=None):
     for d in (0, 1000, 2000, 3000, 4000):
         cells = []
         for m in mfs:
-            e = estimate(msrp - d, msrp, rpct, m, trade, TERM, ACQ_FEE, doc_fee, REG_FEES, lc)
+            e = estimate(walk_p - d, msrp, rpct, m, trade, TERM, ACQ_FEE, doc_fee, REG_FEES, lc)
             cells.append(f"{money(e['monthly_payment'])} / {money(e['effective_monthly'])}")
-        sens.append([f"{money(msrp - d)}" + (" (MSRP)" if d == 0 else f" (-{money(d)})")] + cells)
+        tot = msrp - (walk_p - d)
+        sens.append([f"{money(walk_p - d)}" + (" (MSRP)" if tot <= 0 else f" (-{money(tot)})")] + cells)
     story.append(grid(sens, [1.9 * inch] + [(W - 1.9 * inch) / 3] * 3))
     story.append(Paragraph("Each cell: monthly payment / total lease cost / 36, with the $10,000 Santa Fe applied and $0 extra cash.",
                            st["small"]))
     story.append(Spacer(1, 6))
     tr = [["Santa Fe value"] + [money(x) for x in (8000, 9000, 10000, 11000, 12000)]]
-    tr.append([f"Monthly payment, {money(TARGET_DISCOUNT)} off"] + [
-        money(estimate(msrp - TARGET_DISCOUNT, msrp, rpct, mf, x, TERM, ACQ_FEE, doc_fee, REG_FEES, lc)["monthly_payment"])
+    tr.append([f"Monthly payment, {off(target_p)}"] + [
+        money(estimate(target_p, msrp, rpct, mf, x, TERM, ACQ_FEE, doc_fee, REG_FEES, lc)["monthly_payment"])
         for x in (8000, 9000, 10000, 11000, 12000)])
     tr.append(["Total lease cost / 36"] + [
-        money(estimate(msrp - TARGET_DISCOUNT, msrp, rpct, mf, x, TERM, ACQ_FEE, doc_fee, REG_FEES, lc)["effective_monthly"])
+        money(estimate(target_p, msrp, rpct, mf, x, TERM, ACQ_FEE, doc_fee, REG_FEES, lc)["effective_monthly"])
         for x in (8000, 9000, 10000, 11000, 12000)])
     story.append(grid(tr, [1.9 * inch] + [(W - 1.9 * inch) / 5] * 5))
     story.append(Paragraph(
@@ -295,7 +307,7 @@ def sheet(deal_id, v, o, trade, out_dir, generated, contact=None):
     plan = [
         f"<b>Price first, by itself.</b> Agree the selling price before talking payment or trade. Open at "
         f"<b>{money(opening['price'])}</b>, aim for <b>{money(target['price'])}</b>, and walk away above "
-        f"<b>{money(msrp)}</b> or if add-ons appear.",
+        f"<b>{money(walk_p)}</b> or if add-ons appear.",
         f"<b>Money factor.</b> Ask for the money factor and residual in writing. Expect about {mf:.5f} "
         f"({apr:.1f}% APR) and {rpct:.0f}%. Anything higher is dealer markup: ask for the buy rate.",
         f"<b>Lease cash.</b> Confirm the {money(lc)} Hyundai lease cash is applied (program ends "
